@@ -1,0 +1,14 @@
+# Chrome profiles
+chrome_profile/
+chrome_profile_elementor/
+
+# Screenshots
+screenshots/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# OS files
+Thumbs.db
+.DS_Store

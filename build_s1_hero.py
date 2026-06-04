@@ -1,0 +1,287 @@
+﻿# -*- coding: utf-8 -*-
+"""Build Section 1 - Hero Banner for Container Motel page"""
+import sys, os, json, asyncio
+sys.stdout.reconfigure(encoding="utf-8")
+
+from playwright.async_api import async_playwright
+
+WP_URL = "https://yange14.sg-host.com"
+USER = "243626599@qq.com"
+PASS = "8008208820dhc"
+BASE = os.path.dirname(os.path.abspath(__file__))
+PROFILE = os.path.join(BASE, "chrome_profile")
+savedir = os.path.join(BASE, "screenshots")
+os.makedirs(savedir, exist_ok=True)
+
+# Design Tokens
+D = {
+    "primary": "#E87C2A", "primary_dark": "#c96820",
+    "dark_bg": "#0d0d0d", "dark_1": "#1a1a1a", "dark_2": "#222222",
+    "dark_3": "#2a2a2a",
+    "white": "#ffffff", "text_main": "#e8e8e8", "text_sub": "#aaaaaa",
+    "border": "#3a3a3a", "overlay": "rgba(0,0,0,0.62)",
+    "font_h": "Oswald", "font_b": "Inter",
+}
+
+# Image IDs
+IMG = {
+    "banner": "27",
+    "intro": "262",
+    "type_modular": "263", "type_portable": "264",
+    "type_prefab": "265", "type_shipping": "266",
+    "room_double": "267", "room_family": "268",
+    "room_luxury": "269", "room_single": "270",
+}
+
+def sec(bg, pt=100, pb=100, width="boxed", cw=1200):
+    s = {"elType": "section", "settings": {
+        "background_background": "classic", "background_color": bg,
+        "padding": {"unit": "px", "top": str(pt), "right": "0", "bottom": str(pb), "left": "0", "isLinked": False},
+        "gap": "no", "_element_width": width,
+    }, "elements": []}
+    if width == "boxed":
+        s["settings"]["_element_custom_width"] = {"size": cw, "unit": "px"}
+    return s
+
+def col(w, bg="", pad=0, pos="center"):
+    c = {"elType": "column", "settings": {
+        "_column_size": int(w), "_inline_size": int(w),
+        "content_position": pos,
+        "padding": {"unit": "px", "top": str(pad), "right": str(pad), "bottom": str(pad), "left": str(pad), "isLinked": True}
+    }, "elements": []}
+    if bg:
+        c["settings"]["background_background"] = "classic"
+        c["settings"]["background_color"] = bg
+    return c
+
+def hdg(t, tag="h2", s=40, c="#ffffff", f="Oswald", w=600, a="left", ls=1, uc=True, lh=1.2):
+    h = {"elType": "widget", "widgetType": "heading", "settings": {
+        "title": t, "header_size": tag, "align": a, "title_color": c,
+        "typography_typography": "custom", "typography_font_family": f,
+        "typography_font_size": {"size": s, "unit": "px"},
+        "typography_font_weight": str(w),
+        "typography_line_height": {"size": lh, "unit": "em"},
+    }}
+    if uc: h["settings"]["typography_text_transform"] = "uppercase"
+    if ls: h["settings"]["typography_letter_spacing"] = {"size": ls, "unit": "px"}
+    return h
+
+def txt(content, c="#aaaaaa", s=16, a="left", f="Inter", lh=1.7):
+    return {"elType": "widget", "widgetType": "text-editor", "settings": {
+        "editor": content, "align": a, "text_color": c,
+        "typography_typography": "custom", "typography_font_family": f,
+        "typography_font_size": {"size": s, "unit": "px"},
+        "typography_line_height": {"size": lh, "unit": "em"},
+    }}
+
+def bt(t, lk="#", st="primary"):
+    b = {"elType": "widget", "widgetType": "button", "settings": {
+        "text": t, "link": {"url": lk}, "align": "left",
+        "button_size": "custom",
+        "border_border": "solid",
+        "border_width": {"unit": "px", "top": "2", "right": "2", "bottom": "2", "left": "2", "isLinked": True},
+        "border_radius": {"unit": "px", "top": "4", "right": "4", "bottom": "4", "left": "4", "isLinked": True},
+        "padding": {"unit": "px", "top": "14", "right": "32", "bottom": "14", "left": "32", "isLinked": False},
+        "typography_typography": "custom", "typography_font_family": "Inter",
+        "typography_font_size": {"size": 14, "unit": "px"},
+        "typography_font_weight": "600",
+        "typography_text_transform": "uppercase",
+        "typography_letter_spacing": {"size": 2, "unit": "px"},
+    }}
+    if st == "primary":
+        b["settings"].update({
+            "background_color": D["primary"], "button_text_color": "#ffffff",
+            "border_color": D["primary"],
+            "hover_background_color": D["primary_dark"], "hover_color": "#ffffff",
+        })
+    else:
+        b["settings"].update({
+            "background_color": "rgba(0,0,0,0)", "button_text_color": D["primary"],
+            "border_color": D["primary"],
+            "hover_background_color": D["primary"], "hover_color": "#ffffff",
+        })
+    return b
+
+async def run_js(page, code, name=""):
+    r = await page.evaluate(code)
+    ok_str = "OK" if r.get("ok") else "FAIL"
+    print(f"  [{ok_str}] {name}: {json.dumps(r, ensure_ascii=False)[:120]}")
+    return r
+
+async def clear_all(page):
+    return await run_js(page, """
+        async () => {
+            try {
+                const doc = elementor.documents.getCurrent();
+                const c = doc.container;
+                while (c.children.length > 0) {
+                    await $e.run("document/elements/delete", { container: c.children[0] });
+                }
+                return { ok: true, remaining: c.children.length };
+            } catch(e) { return { ok: false, error: e.message }; }
+        }
+    """, "Clear all sections")
+
+async def create_elem(page, data, name=""):
+    return await run_js(page, f"""
+        async () => {{
+            try {{
+                const doc = elementor.documents.getCurrent();
+                const c = doc.container;
+                const d = {json.dumps(data)};
+                await $e.run("document/elements/create", {{
+                    container: c, model: d,
+                    options: {{ edit: false, raise: false }}
+                }});
+                return {{ ok: true, childCount: c.children.length }};
+            }} catch(e) {{
+                return {{ ok: false, error: e.message, stack: e.stack?.substring(0,200) }};
+            }}
+        }}
+    """, name)
+
+async def save_page(page):
+    return await run_js(page, """
+        async () => {
+            try { await $e.run("document/save/update"); await $e.run("document/save/publish"); return { ok: true }; }
+            catch(e) { return { ok: false, error: e.message }; }
+        }
+    """, "Save page")
+
+async def main():
+    async with async_playwright() as p:
+        browser = await p.chromium.launch_persistent_context(
+            user_data_dir=PROFILE, headless=True, channel="chrome",
+            args=["--disable-blink-features=AutomationControlled", "--no-sandbox"]
+        )
+        page = await browser.new_page()
+        page.set_default_timeout(30000)
+
+        print("=" * 60)
+        print("STEP 1: Login to WordPress")
+        print("=" * 60)
+        await page.goto(f"{WP_URL}/wp-login.php", wait_until="networkidle")
+        if "wp-admin" not in page.url and "reauth" not in page.url:
+            await page.fill("#user_login", USER)
+            await page.fill("#user_pass", PASS)
+            await page.click("#wp-submit")
+            await page.wait_for_timeout(5000)
+        await page.goto(f"{WP_URL}/wp-admin", wait_until="domcontentloaded")
+        print(f"  Admin URL: {page.url[:80]}")
+
+        print("\n" + "=" * 60)
+        print("STEP 2: Open Page 298 in Elementor")
+        print("=" * 60)
+        await page.goto(f"{WP_URL}/wp-admin/post.php?post=298&action=elementor",
+                        wait_until="domcontentloaded", timeout=60000)
+        await page.wait_for_timeout(8000)
+
+        if "elementor" not in page.url:
+            print(f"  FAIL - Elementor not loaded. URL: {page.url[:100]}")
+            await page.screenshot(path=os.path.join(savedir, "00_error_not_loaded.png"))
+            await browser.close()
+            return
+        print("  Elementor loaded successfully!")
+
+        print("\n" + "=" * 60)
+        print("STEP 3: Clear existing sections")
+        print("=" * 60)
+        await clear_all(page)
+        await page.screenshot(path=os.path.join(savedir, "01_cleared.png"))
+
+        print("\n" + "=" * 60)
+        print("STEP 4: Build Section 1 - Hero Banner")
+        print("=" * 60)
+
+        banner_url = f"{WP_URL}/wp-content/uploads/2025/01/1.banner.jpg"
+
+        # Main section config
+        hero_sec = sec(D["dark_1"], pt=180, pb=140, width="full")
+        hero_sec["settings"].update({
+            "background_image": {"url": banner_url, "id": IMG["banner"]},
+            "background_position": "center center",
+            "background_size": "cover",
+            "background_repeat": "no-repeat",
+            "background_overlay_background": "classic",
+            "background_overlay_color": D["overlay"],
+            "min_height": {"size": 680, "unit": "px"},
+            "content_position": "middle",
+        })
+
+        # Single column
+        hero_col = col(100, pad=0, pos="center")
+
+        # Eyebrow: Inter 13px 500, uppercase, ls:4px, #E87C2A, border
+        eyebrow = hdg("ZN Prefab Solutions", tag="span", s=13, c=D["primary"],
+                       f="Inter", w=500, a="left", ls=4, lh=1)
+        eyebrow["settings"].update({
+            "border_border": "solid",
+            "border_color": "rgba(232,124,42,0.35)",
+            "border_width": {"unit": "px", "top": "1", "right": "1", "bottom": "1", "left": "1", "isLinked": True},
+            "border_radius": {"unit": "px", "top": "4", "right": "4", "bottom": "4", "left": "4", "isLinked": True},
+            "padding": {"unit": "px", "top": "6", "right": "20", "bottom": "6", "left": "20", "isLinked": False},
+            "typography_text_decoration": "none",
+        })
+        hero_col["elements"].append(eyebrow)
+
+        # Title: Oswald 62px 700, uppercase, ls:2px, lh:1.1, #fff
+        title = hdg("Container <span style=\"color:#E87C2A;\">Motel</span> Buildings", tag="h1", s=62, c=D["white"],
+                     f="Oswald", w=700, a="left", ls=2, lh=1.1)
+        hero_col["elements"].append(title)
+
+        # Description
+        desc = txt(
+            "Factory-built container motel units designed for fast deployment across "
+            "remote sites, highways, and hospitality destinations. Durable, customizable, "
+            "and cost-efficient modular solutions.",
+            c="rgba(255,255,255,0.82)", s=18, a="left", lh=1.8
+        )
+        hero_col["elements"].append(desc)
+
+        # Buttons row: inner section with 2 columns
+        btn_inner = {
+            "elType": "section",
+            "settings": {
+                "gap": "no",
+                "_element_width": "boxed",
+                "_element_custom_width": {"size": 520, "unit": "px"},
+                "padding": {"unit": "px", "top": "0", "right": "0",
+                            "bottom": "0", "left": "0", "isLinked": True},
+                "margin": {"unit": "px", "top": "10", "right": "0",
+                           "bottom": "0", "left": "0", "isLinked": False},
+            },
+            "elements": [
+                {"elType": "column", "settings": {
+                    "_column_size": 50, "_inline_size": 50,
+                    "content_position": "center",
+                    "padding": {"unit": "px", "top": "5", "right": "8",
+                                "bottom": "5", "left": "0", "isLinked": False},
+                }, "elements": [bt("Get A Free Quote \u203a")]},
+                {"elType": "column", "settings": {
+                    "_column_size": 50, "_inline_size": 50,
+                    "content_position": "center",
+                    "padding": {"unit": "px", "top": "5", "right": "0",
+                                "bottom": "5", "left": "8", "isLinked": False},
+                }, "elements": [bt("View Brochure", "#", "outline")]},
+            ]
+        }
+        hero_col["elements"].append(btn_inner)
+
+        hero_sec["elements"] = [hero_col]
+
+        await create_elem(page, hero_sec, "Section 1 - Hero Banner")
+        await page.screenshot(path=os.path.join(savedir, "02_section1_hero.png"))
+
+        print("\n" + "=" * 60)
+        print("STEP 5: Save page")
+        print("=" * 60)
+        await save_page(page)
+
+        print("\n" + "=" * 60)
+        print("DONE! Section 1 - Hero Banner built successfully!")
+        print(f"Check screenshot: {savedir}\\02_section1_hero.png")
+        print("=" * 60)
+
+        await browser.close()
+
+asyncio.run(main())
